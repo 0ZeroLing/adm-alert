@@ -137,8 +137,9 @@
   <h2>批量导入 WINGS 星系</h2>
   <div style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6">
     每行一个星系，两种格式自动识别：<br>
-    ① 完整格式（推荐，含战略）：<code>星系名 [C] 军等级/军指数 工等级/工指数 战等级/战指数</code>
+    ① 完整格式（推荐，含战略）：<code>星系名 [C] 军等级/军指数 工等级/工指数 战等级/战指数 [小时]</code>
     例：<code>K4-RFZ 5/30 5/40 5/50</code> 表示军5/30%、工5/40%、战5/50%；首都加 <code>C</code> 标记：<code>1DQ1-A C 5/30 5/40 5/50</code><br>
+    末尾可加数据时间的小时（0-23，年月日=今天）：<code>K4-RFZ 5/30 5/40 5/50 19</code> 表示数据是今天 19 点看到的；不填则用导入时刻<br>
     ② 战术图 PDF 文本：只识别「星系名 WINGS」标记建卡（等级指数为默认值，导入后编辑补填）<br>
     同名星系跳过不重复导入。
   </div>
@@ -481,13 +482,20 @@ function bulkFillSample(){ $('bulkText').value = 'K4-RFZ 5/30 5/40 5/50\nL-FVHR 
 async function doBulkImport(){
   const txt = $('bulkText').value;
   const flat = txt.replace(/\s+/g, ' ');
+  const nowIso = new Date().toISOString();   // 导入的数据时间 = 导入时刻
+  // 完整格式带小时：数据时间 = 当天（导入日）+ 指定小时（0-23）
+  function hourIso(h){
+    const d = new Date(); d.setHours(+h, 0, 0, 0); return d.toISOString();
+  }
   const toAdd = [], names = [];
   const known = new Set(state.systems.map(s=>s.name));
-  // 格式一：星系名 [C] 军L/军% 工L/工% 战L/战%
-  const patB = /([A-Z0-9][A-Z0-9-]{2,6})(\s+C\b|\*)?\s+(?:WINGS\s+)?(\d)\/(\d+)\s+(\d)\/(\d+)\s+(\d)\/(\d+)/g;
+  // 格式一（完整格式）：星系名 [C] 军L/军% 工L/工% 战L/战% [小时]
+  // 例：K4-RFZ 5/30 5/40 5/50 → 军5/30%、工5/40%、战5/50%；C=首都（ADM +2）
+  // 末尾可加数据时间的小时数（0-23，年月日=导入当天）：K4-RFZ 5/30 5/40 5/50 19
+  const patB = /([A-Z0-9][A-Z0-9-]{2,6})(\s+C\b|\*)?\s+(?:WINGS\s+)?(\d)\/(\d+)\s+(\d)\/(\d+)\s+(\d)\/(\d+)(?:\s+(2[0-3]|1\d|\d)(?!\S))?/g;
   let m;
   while((m = patB.exec(flat))){
-    const [_, name, capMark, mLv, mPct, iLv, iPct, sLv, sPct] = m;
+    const [_, name, capMark, mLv, mPct, iLv, iPct, sLv, sPct, hh] = m;
     if(known.has(name)) continue;
     known.add(name);
     toAdd.push({
@@ -496,7 +504,8 @@ async function doBulkImport(){
       indLv: Math.min(5, +iLv), indPct: Math.min(100, +iPct),
       strLv: Math.min(5, +sLv), strPct: Math.min(100, +sPct),
       capital: !!capMark,
-      note: '批量导入 ' + todayStr()
+      note: '批量导入 ' + todayStr(),
+      updAt: hh !== undefined ? hourIso(hh) : nowIso
     });
     names.push(name);
   }
