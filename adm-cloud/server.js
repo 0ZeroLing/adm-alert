@@ -141,14 +141,20 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true });
     }
     if(req.method === 'POST' && p === '/api/systems'){
-      // 批量导入（数组），跳过已有
+      // 批量导入（数组）：同名直接更新（含 updAt 数据时间），新名新增
       const body = await readBody(req);
       const arr = Array.isArray(body) ? body : body.systems;
       if(!Array.isArray(arr)) throw new Error('BAD_JSON');
-      const have = new Set(store.systems.map(s => s.name));
-      const rows = arr.filter(s => !have.has(String(s.name || '').trim())).map(cleanSys);
-      await withWrite(() => { store.systems.push(...rows); });
-      return send(res, 200, { added: rows.length, skipped: arr.length - rows.length });
+      const rows = arr.map(cleanSys);
+      let added = 0, updated = 0;
+      await withWrite(() => {
+        for(const row of rows){
+          const i = store.systems.findIndex(s => s.name === row.name);
+          if(i >= 0){ store.systems[i] = row; updated++; }
+          else { store.systems.push(row); added++; }
+        }
+      });
+      return send(res, 200, { added, updated });
     }
     if(req.method === 'PATCH' && p === '/api/system'){
       // 改名场景：body.old + 新数据
